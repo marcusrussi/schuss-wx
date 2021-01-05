@@ -1,5 +1,8 @@
 #include "include/honeywell.h"
 
+#define US_MIN_DIST 2
+#define US_MAX_DIST 5
+
 int led1          = D7;
 int ultrasonicPin = A0;
 
@@ -34,23 +37,35 @@ float distanceFromADC(float val) {
   return val / (4.0 * 2.54 * 12);
 }
 
-float captureDistanceReading(int pin, int n_samples=1, int sample_spacing=0) {
-  int sum = 0;
+float captureDistanceReading(int pin,
+                             int n_samples      = 1,
+                             int sample_spacing = 0,
+                             float min_dist     = 0,
+                             float max_dist     = 20)
+{
+  float sum              = 0;
+  int   successful_reads = 0;
+
+  int   sensorReadRaw;
+  float sensorReadFt;
 
   for (int i = 0; i < n_samples; i++) {
     if (sample_spacing > 0 && i > 0)
       delay(sample_spacing);
 
-    sum += analogRead(pin);
+    sensorReadRaw = analogRead(pin);
+    sensorReadFt  = distanceFromADC(sensorReadRaw);
+
+    if (min_dist < sensorReadFt && sensorReadFt <= max_dist) {
+      sum += sensorReadFt;
+      ++successful_reads;
+    }
   }
 
-  // The conversion from voltage to distance in ft to nearest object is linear,
-  // so we can just take the average of all of the voltages in
-  // `ultrasonicSampleBuf`.
-  float avgVoltage  = (float) sum / n_samples;
-  float avgDistance = distanceFromADC(avgVoltage);
+  if (successful_reads == 0)
+    return 0;
 
-  return avgDistance;
+  return sum / successful_reads;
 }
 
 void setup() {
@@ -85,8 +100,14 @@ void loop() {
   float temp     = CtoF(pressureSensor.temperature());    // unit: [F]
   float pressure = pressureSensor.pressure();             // unit: [psi]
 
-  // Capture 100 samples spaced 300ms apart
-  float distance = captureDistanceReading(ultrasonicPin, 100, 300); // unit: [ft]
+  // Capture 1000 samples spaced 30ms apart
+  float distance = captureDistanceReading(
+      ultrasonicPin,
+      1000,
+      30,
+      US_MIN_DIST,
+      US_MAX_DIST
+  ); // unit: [ft]
 
   JSONBufferWriter writer(jsonBuf, sizeof(jsonBuf));
   memset(jsonBuf, 0, sizeof(jsonBuf));
