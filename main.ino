@@ -1,15 +1,21 @@
 #include "include/honeywell.h"
 
-#define US_MIN_DIST 2
-#define US_MAX_DIST 5
+#define US_NUM_SAMPLES 1000 // Number of samples to collect on each loop
+#define US_MIN_DIST    2    // unit: [ft]
+#define US_MAX_DIST    5    // unit: [ft]
 
+#define JSON_BUFLEN    8192
+
+// Pin mappings for the signaling LED, and the ultrasonic ADC pin
 int led1          = D7;
 int ultrasonicPin = A0;
 
-char jsonBuf[2048];
+// Buffers for constructing JSON objects, and for collecting samples
+// off the ultrasonic sensor
+char jsonBuf[JSON_BUFLEN];
+int  usBuf[US_NUM_SAMPLES];
 
 SystemSleepConfiguration config;
-
 
 int delayLength = 5000;
 
@@ -26,7 +32,9 @@ float CtoF (float C) {
 
 float distanceFromADC(float val) {
 
-  // 3.243 appears to be nominal voltage
+  // 3.243 appears to be nominal voltage, however this doesn't factor into the
+  // calculation because ADC output is as a fraction of Vcc, not of the 
+  // "stated" 3.3V
 
   // V_cc / 1024 per cm
   // Meanwhile the output is a number between 0 and 4095
@@ -38,10 +46,9 @@ float distanceFromADC(float val) {
 }
 
 float captureDistanceReading(int pin,
-                             int n_samples      = 1,
-                             int sample_spacing = 0,
-                             float min_dist     = 0,
-                             float max_dist     = 20)
+                             int sample_spacing,
+                             float min_dist,
+                             float max_dist)
 {
   float sum              = 0;
   int   successful_reads = 0;
@@ -49,12 +56,14 @@ float captureDistanceReading(int pin,
   int   sensorReadRaw;
   float sensorReadFt;
 
-  for (int i = 0; i < n_samples; i++) {
+  for (int i = 0; i < US_NUM_SAMPLES; i++) {
     if (sample_spacing > 0 && i > 0)
       delay(sample_spacing);
 
     sensorReadRaw = analogRead(pin);
     sensorReadFt  = distanceFromADC(sensorReadRaw);
+
+    usBuf[i] = sensorReadRaw;
 
     if (min_dist < sensorReadFt && sensorReadFt <= max_dist) {
       sum += sensorReadFt;
@@ -68,7 +77,29 @@ float captureDistanceReading(int pin,
   return sum / successful_reads;
 }
 
+int startUSStream() {
+  bool success = server.begin();
+
+  delay(30s);
+
+  return !success;
+}
+
+int stopUSStream() {
+  server.stop();
+
+  return 0;
+}
+
+void streamUSSamples() {
+  for (int i = 0; i < US_NUM_SAMPLES; i++)
+    server.println(usBuf, DEC);
+}
+
 void setup() {
+
+  Particle.function("startUSStream", startUSStream);
+  Particle.function("stopUSStream",  stopUSStream);
 
   pinMode(led1, OUTPUT);
 
@@ -102,12 +133,14 @@ void loop() {
 
   // Capture 1000 samples spaced 30ms apart
   float distance = captureDistanceReading(
-      ultrasonicPin,
-      1000,
-      30,
-      US_MIN_DIST,
-      US_MAX_DIST
+      ultrasonicPin,  // Which ADC pin
+      30,             // Every 30ms
+      US_MIN_DIST,    // Min distance for windowed average
+      US_MAX_DIST     // Max distance for windowed average
   ); // unit: [ft]
+
+  if (tcp_stream_active)
+    streamUSSamples();
 
   JSONBufferWriter writer(jsonBuf, sizeof(jsonBuf));
   memset(jsonBuf, 0, sizeof(jsonBuf));
