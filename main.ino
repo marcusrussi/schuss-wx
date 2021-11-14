@@ -77,29 +77,7 @@ float captureDistanceReading(int pin,
   return sum / successful_reads;
 }
 
-int startUSStream() {
-  bool success = server.begin();
-
-  delay(30s);
-
-  return !success;
-}
-
-int stopUSStream() {
-  server.stop();
-
-  return 0;
-}
-
-void streamUSSamples() {
-  for (int i = 0; i < US_NUM_SAMPLES; i++)
-    server.println(usBuf, DEC);
-}
-
 void setup() {
-
-  Particle.function("startUSStream", startUSStream);
-  Particle.function("stopUSStream",  stopUSStream);
 
   pinMode(led1, OUTPUT);
 
@@ -132,15 +110,14 @@ void loop() {
   float pressure = pressureSensor.pressure();             // unit: [psi]
 
   // Capture 1000 samples spaced 30ms apart
-  float distance = captureDistanceReading(
-      ultrasonicPin,  // Which ADC pin
-      30,             // Every 30ms
-      US_MIN_DIST,    // Min distance for windowed average
-      US_MAX_DIST     // Max distance for windowed average
-  ); // unit: [ft]
+  // float distance = captureDistanceReading(
+  //     ultrasonicPin,  // Which ADC pin
+  //     30,             // Every 30ms
+  //     US_MIN_DIST,    // Min distance for windowed average
+  //     US_MAX_DIST     // Max distance for windowed average
+  // ); // unit: [ft]
 
-  if (tcp_stream_active)
-    streamUSSamples();
+  float distance = 0;
 
   JSONBufferWriter writer(jsonBuf, sizeof(jsonBuf));
   memset(jsonBuf, 0, sizeof(jsonBuf));
