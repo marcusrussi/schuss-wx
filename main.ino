@@ -13,7 +13,6 @@ int ultrasonicPin = A0;
 // Buffers for constructing JSON objects, and for collecting samples
 // off the ultrasonic sensor
 char jsonBuf[JSON_BUFLEN];
-int  usBuf[US_NUM_SAMPLES];
 
 SystemSleepConfiguration config;
 
@@ -52,7 +51,7 @@ float captureDistanceReading(int pin,
                              float min_dist,
                              float max_dist)
 {
-  float sum              = 0;
+  float max_dist_seen    = 0;
   int   successful_reads = 0;
 
   int   sensorReadRaw;
@@ -65,18 +64,18 @@ float captureDistanceReading(int pin,
     sensorReadRaw = analogRead(pin);
     sensorReadIn  = distanceFromADC(sensorReadRaw);
 
-    usBuf[i] = sensorReadRaw;
-
     if (min_dist < sensorReadIn && sensorReadIn <= max_dist) {
-      sum += sensorReadIn;
       ++successful_reads;
+      
+      if (sensorReadIn > max_dist_seen)
+        max_dist_seen = sensorReadIn;
     }
   }
 
   if (successful_reads == 0)
     return 0;
 
-  return sum / successful_reads;
+  return max_dist_seen;
 }
 
 void setup() {
