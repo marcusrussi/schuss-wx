@@ -1,8 +1,8 @@
 #include "include/honeywell.h"
 
-#define US_NUM_SAMPLES 1000 // Number of samples to collect on each loop
-#define US_MIN_DIST    2    // unit: [ft]
-#define US_MAX_DIST    5    // unit: [ft]
+#define US_NUM_SAMPLES 100  // Number of samples to collect on each loop
+#define US_MIN_DIST    15   // unit: [in]
+#define US_MAX_DIST    57   // unit: [in]
 
 #define JSON_BUFLEN    8192
 
@@ -17,7 +17,7 @@ int  usBuf[US_NUM_SAMPLES];
 
 SystemSleepConfiguration config;
 
-int delayLength = 5000;
+int delayLength = 10000;
 
 TruStabilityPressureSensor pressureSensor(
   D14, // SS pin for SPI
@@ -37,12 +37,14 @@ float distanceFromADC(float val) {
   // "stated" 3.3V
 
   // V_cc / 1024 per cm
+  // V_cc / 1024 per 5 mm
   // Meanwhile the output is a number between 0 and 4095
+  // So 4095/1024 = 1 cm
   // So 4095/1024 = 1 cm
   //   (or ~4 per cm)
   // Therefore, divide by 4 to get the number of cm
   // Then, to get ft, divide by 2.54, then divide by 12
-  return val / (4.0 * 2.54 * 12);
+  return (1/2.54) * (1/10.0)  * val * (5120.0 / 4095.0);
 }
 
 float captureDistanceReading(int pin,
@@ -54,19 +56,19 @@ float captureDistanceReading(int pin,
   int   successful_reads = 0;
 
   int   sensorReadRaw;
-  float sensorReadFt;
+  float sensorReadIn;
 
   for (int i = 0; i < US_NUM_SAMPLES; i++) {
     if (sample_spacing > 0 && i > 0)
       delay(sample_spacing);
 
     sensorReadRaw = analogRead(pin);
-    sensorReadFt  = distanceFromADC(sensorReadRaw);
+    sensorReadIn  = distanceFromADC(sensorReadRaw);
 
     usBuf[i] = sensorReadRaw;
 
-    if (min_dist < sensorReadFt && sensorReadFt <= max_dist) {
-      sum += sensorReadFt;
+    if (min_dist < sensorReadIn && sensorReadIn <= max_dist) {
+      sum += sensorReadIn;
       ++successful_reads;
     }
   }
@@ -117,7 +119,12 @@ void loop() {
   //     US_MAX_DIST     // Max distance for windowed average
   // ); // unit: [ft]
 
-  float distance = 0;
+  float distance = captureDistanceReading(
+      ultrasonicPin,  // Which ADC pin
+      600,            // Every 600ms
+      US_MIN_DIST,    // Min distance for windowed average
+      US_MAX_DIST     // Max distance for windowed average
+  ); // unit: [in]
 
   JSONBufferWriter writer(jsonBuf, sizeof(jsonBuf));
   memset(jsonBuf, 0, sizeof(jsonBuf));
